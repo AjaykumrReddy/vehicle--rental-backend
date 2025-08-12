@@ -11,6 +11,8 @@ class User(Base):
     phone_number = Column(Text, unique=True, index=True, nullable=False)
     email = Column(Text, unique=True, index=True, nullable=True)
     full_name = Column(Text, nullable=False)
+    otp_code = Column(Text, nullable=True)
+    otp_expires_at = Column(DateTime(timezone=True), nullable=True)
     is_verified = Column(Boolean, server_default=text('false'))
     is_active = Column(Boolean, server_default=text('true'))
     profile_image = Column(Text, nullable=True)
