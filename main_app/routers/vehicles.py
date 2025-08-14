@@ -21,15 +21,19 @@ supabase: Client = create_client(supabase_url, supabase_service_key)
 router = APIRouter(prefix="/vehicles", tags=["vehicles"])
 
 @router.post("/register")
-def register_vehicle(vehicle: Vehicle, current_user_data: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+def register_vehicle(vehicle: Vehicle, owner_id: str, db: Session = Depends(get_db)):
     """Register a new vehicle"""
     point_wkt = WKTElement(f'POINT({vehicle.longitude} {vehicle.latitude})', srid=4326)
     db_vehicle = VehicleModel(
-        owner_id=current_user_data["user_id"],
+        owner_id=owner_id,
         brand=vehicle.brand,
         model=vehicle.model,
         location=point_wkt,
-        available=vehicle.available
+        available=vehicle.available,
+        vehicle_type=vehicle.vehicle_type,
+        color=vehicle.color,
+        license_plate=vehicle.license_plate,
+        year=vehicle.year
     )
     db.add(db_vehicle)
     db.commit()
@@ -41,7 +45,8 @@ def get_nearby_vehicles(lat: float, lng: float, radius_km: float = 5, db: Sessio
     """Get vehicles within specified radius"""
     point_wkt = f'SRID=4326;POINT({lng} {lat})'
     sql = """
-        SELECT id, owner_id, brand, model, ST_AsText(location::geometry) as location, available, created_at
+        SELECT id, owner_id,vehicle_type, brand, model, ST_AsText(location::geometry) as location,
+        color, year, available, created_at
         FROM vehicles
         WHERE ST_DWithin(location::geography, ST_GeogFromText(:point), :radius)
         AND available = true
@@ -88,6 +93,10 @@ def get_vehicle_details(vehicle_id: str, db: Session = Depends(get_db)):
         "latitude": lat,
         "longitude": lng,
         "available": vehicle.available,
+        "vehicle_type": vehicle.vehicle_type,
+        "color": vehicle.color,
+        "license_plate": vehicle.license_plate,
+        "year": vehicle.year,
         "created_at": vehicle.created_at,
         "photos": photos
     }

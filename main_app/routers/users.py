@@ -2,10 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timedelta, timezone
+from typing import List
 from ..db import get_db
-from ..models import User
-from ..schemas import UserRegister, UserResponse, SendOTP, VerifyOTP, Token, OTPResponse
+from ..models import User, VehicleModel
+from ..schemas import UserRegister, UserResponse, SendOTP, VerifyOTP, Token, OTPResponse, VehicleResponse
 from ..auth import generate_otp, is_otp_valid, create_access_token, OTP_EXPIRE_MINUTES, ACCESS_TOKEN_EXPIRE_DAYS, get_current_user
+from geoalchemy2.functions import ST_X, ST_Y
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -131,6 +133,37 @@ def get_current_user_from_db(current_user_data: dict = Depends(get_current_user)
 def get_profile(current_user: User = Depends(get_current_user_from_db)):
     """Get current user profile (protected endpoint)"""
     return current_user
+
+@router.get("/vehicles", response_model=List[VehicleResponse])
+def get_user_vehicles(current_user: User = Depends(get_current_user_from_db), db: Session = Depends(get_db)):
+    """Get all vehicles registered by current user"""
+    vehicles = db.query(VehicleModel).filter(
+        VehicleModel.owner_id == current_user.id,
+        VehicleModel.deleted_at.is_(None)
+    ).all()
+    
+    result = []
+    for vehicle in vehicles:
+        lat = db.scalar(ST_Y(vehicle.location))
+        lng = db.scalar(ST_X(vehicle.location))
+        
+        result.append({
+            "id": vehicle.id,
+            "owner_id": vehicle.owner_id,
+            "brand": vehicle.brand,
+            "model": vehicle.model,
+            "latitude": lat,
+            "longitude": lng,
+            "available": vehicle.available,
+            "vehicle_type": vehicle.vehicle_type,
+            "color": vehicle.color,
+            "license_plate": vehicle.license_plate,
+            "year": vehicle.year,
+            "created_at": vehicle.created_at,
+            "photos": vehicle.photo_list
+        })
+    
+    return result
 
 @router.get("/{user_id}", response_model=UserResponse)
 def get_user(user_id: str, db: Session = Depends(get_db)):

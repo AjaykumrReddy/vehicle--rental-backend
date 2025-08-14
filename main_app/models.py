@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, DateTime, Text, ForeignKey, text
+from sqlalchemy import Column, String, Boolean, DateTime, Text, ForeignKey, Integer, text, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from geoalchemy2 import Geography
@@ -30,6 +30,10 @@ class VehicleModel(Base):
     model = Column(Text, nullable=False)
     location = Column(Geography(geometry_type='POINT', srid=4326), nullable=False)
     available = Column(Boolean, server_default=text('true'))
+    vehicle_type = Column(Text, nullable=False)
+    color = Column(Text, nullable=False)
+    license_plate = Column(Text, unique=True, nullable=False)
+    year = Column(Integer, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=text('now()'))
     updated_at = Column(DateTime(timezone=True), server_default=text('now()'))
     deleted_at = Column(DateTime(timezone=True), nullable=True)

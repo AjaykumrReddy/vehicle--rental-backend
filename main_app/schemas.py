@@ -44,12 +44,15 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 class Vehicle(BaseModel):
-    owner_id: str
     brand: str
     model: str
     latitude: float
     longitude: float
-    available: bool
+    available: bool = True
+    vehicle_type: str
+    color: str
+    license_plate: str
+    year: int
 
 class VehiclePhoto(BaseModel):
     id: UUID
@@ -59,6 +62,17 @@ class VehiclePhoto(BaseModel):
     class Config:
         from_attributes = True
 
+class SimpleVehicleResponse(BaseModel):
+    id: UUID
+    owner_id: UUID
+    brand: str
+    model: str
+    latitude: float
+    longitude: float
+    available: bool
+    created_at: datetime
+    photos: List[VehiclePhoto] = []
+
 class VehicleResponse(BaseModel):
     id: UUID
     owner_id: UUID
@@ -67,6 +81,10 @@ class VehicleResponse(BaseModel):
     latitude: float
     longitude: float
     available: bool
+    vehicle_type: str
+    color: str
+    license_plate: str
+    year: int
     created_at: datetime
     photos: List[VehiclePhoto] = []
     
