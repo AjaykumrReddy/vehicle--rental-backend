@@ -42,15 +42,17 @@ def register_vehicle(vehicle: Vehicle, owner_id: str, db: Session = Depends(get_
 
 @router.get("/nearby")
 def get_nearby_vehicles(lat: float, lng: float, radius_km: float = 5, db: Session = Depends(get_db)):
-    """Get vehicles within specified radius"""
+    """Get vehicles within specified radius ordered by distance"""
     point_wkt = f'SRID=4326;POINT({lng} {lat})'
     sql = """
-        SELECT id, owner_id,vehicle_type, brand, model, ST_AsText(location::geometry) as location,
-        color, year, available, created_at
+        SELECT id, owner_id, vehicle_type, brand, model, ST_AsText(location::geometry) as location,
+        color, year, available, created_at,
+        ROUND(ST_Distance(location::geography, ST_GeogFromText(:point))::numeric, 0) as distance_meters
         FROM vehicles
         WHERE ST_DWithin(location::geography, ST_GeogFromText(:point), :radius)
         AND available = true
         AND deleted_at IS NULL
+        ORDER BY ST_Distance(location::geography, ST_GeogFromText(:point))
     """
     result = db.execute(text(sql), {"point": point_wkt, "radius": radius_km * 1000})
     return result.mappings().all()
