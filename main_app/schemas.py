@@ -1,7 +1,8 @@
 from pydantic import BaseModel, Field, validator
 from typing import Optional, List
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, time, date
+from decimal import Decimal
 import re
 
 class UserRegister(BaseModel):
@@ -72,6 +73,32 @@ class SimpleVehicleResponse(BaseModel):
     available: bool
     created_at: datetime
     photos: List[VehiclePhoto] = []
+
+class AvailabilitySlot(BaseModel):
+    start_datetime: datetime
+    end_datetime: datetime
+    hourly_rate: float
+    daily_rate: Optional[float] = None
+    weekly_rate: Optional[float] = None
+    min_rental_hours: int = 1
+    max_rental_hours: Optional[int] = None
+
+class AvailabilitySlotResponse(BaseModel):
+    id: UUID
+    start_datetime: datetime
+    end_datetime: datetime
+    hourly_rate: float
+    daily_rate: Optional[float]
+    weekly_rate: Optional[float]
+    min_rental_hours: int
+    max_rental_hours: Optional[int]
+    is_active: bool
+    
+    class Config:
+        from_attributes = True
+
+class SetAvailabilityRequest(BaseModel):
+    slots: List[AvailabilitySlot]
 
 class VehicleResponse(BaseModel):
     id: UUID

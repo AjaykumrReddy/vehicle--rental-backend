@@ -1,9 +1,10 @@
-from sqlalchemy import Column, String, Boolean, DateTime, Text, ForeignKey, Integer, text, Integer
+from sqlalchemy import Column, String, Boolean, DateTime, Text, ForeignKey, Integer, text, Enum, Numeric, Time, Date
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from geoalchemy2 import Geography
 from datetime import datetime, timezone
 from .db import Base
+import enum
 
 class User(Base):
     __tablename__ = "users"
@@ -46,4 +47,59 @@ class VehiclePhoto(Base):
     is_primary = Column(Boolean, server_default=text('false'))
     created_at = Column(DateTime(timezone=True), server_default=text('now()'))
     vehicle = relationship('VehicleModel', backref='photo_list')
+
+class BookingStatus(enum.Enum):
+    PENDING = "pending"
+    CONFIRMED = "confirmed"
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+class Booking(Base):
+    __tablename__ = "bookings"
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text('gen_random_uuid()'), index=True)
+    vehicle_id = Column(UUID(as_uuid=True), ForeignKey('vehicles.id'), nullable=False, index=True)
+    renter_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, index=True)
+    start_time = Column(DateTime(timezone=True), nullable=False, index=True)
+    end_time = Column(DateTime(timezone=True), nullable=False, index=True)
+    status = Column(Enum(BookingStatus), nullable=False, server_default=text("'pending'"), index=True)
+    total_amount = Column(Numeric(10, 2), nullable=False)
+    pickup_location = Column(Geography(geometry_type='POINT', srid=4326), nullable=True)
+    dropoff_location = Column(Geography(geometry_type='POINT', srid=4326), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=text('now()'))
+    updated_at = Column(DateTime(timezone=True), server_default=text('now()'))
+    
+    # Relationships
+    vehicle = relationship('VehicleModel', backref='bookings')
+    renter = relationship('User', backref='rentals')
+
+class VehicleAvailabilitySlot(Base):
+    __tablename__ = "vehicle_availability_slots"
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text('gen_random_uuid()'), index=True)
+    vehicle_id = Column(UUID(as_uuid=True), ForeignKey('vehicles.id', ondelete='CASCADE'), nullable=False, index=True)
+    start_datetime = Column(DateTime(timezone=True), nullable=False, index=True)
+    end_datetime = Column(DateTime(timezone=True), nullable=False, index=True)
+    hourly_rate = Column(Numeric(8, 2), nullable=False)
+    daily_rate = Column(Numeric(8, 2), nullable=True)  # Optional daily rate
+    weekly_rate = Column(Numeric(8, 2), nullable=True)  # Optional weekly rate
+    min_rental_hours = Column(Integer, server_default=text('1'))  # Minimum rental duration
+    max_rental_hours = Column(Integer, nullable=True)  # Maximum rental duration
+    is_active = Column(Boolean, server_default=text('true'))
+    created_at = Column(DateTime(timezone=True), server_default=text('now()'))
+    
+    vehicle = relationship('VehicleModel', backref='availability_slots')
+
+class VehiclePricing(Base):
+    __tablename__ = "vehicle_pricing"
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text('gen_random_uuid()'), index=True)
+    vehicle_id = Column(UUID(as_uuid=True), ForeignKey('vehicles.id', ondelete='CASCADE'), nullable=False, index=True)
+    base_hourly_rate = Column(Numeric(8, 2), nullable=False)
+    daily_rate = Column(Numeric(8, 2), nullable=True)
+    weekly_rate = Column(Numeric(8, 2), nullable=True)
+    security_deposit = Column(Numeric(8, 2), nullable=False, server_default=text('0'))
+    fuel_policy = Column(Text, nullable=True)  # "full_to_full", "pay_per_km", etc.
+    created_at = Column(DateTime(timezone=True), server_default=text('now()'))
+    updated_at = Column(DateTime(timezone=True), server_default=text('now()'))
+    
+    vehicle = relationship('VehicleModel', backref='pricing', uselist=False)
     
