@@ -11,7 +11,7 @@ import uuid
 from supabase import create_client, Client
 import os
 from ..db import get_db
-from ..models import VehicleModel, VehiclePhoto, VehiclePricing, VehicleAvailabilitySlot
+from ..models import VehicleModel, VehiclePhoto, VehiclePricing, VehicleAvailabilitySlot, Booking
 from ..schemas import Vehicle, VehicleResponse, SetAvailabilityRequest, AvailabilitySlotResponse
 from ..auth import get_current_user
 
@@ -314,3 +314,83 @@ def get_vehicle_availability(vehicle_id: str, db: Session = Depends(get_db)):
     ).order_by(VehicleAvailabilitySlot.start_datetime).all()
     
     return slots
+
+@router.delete("/{vehicle_id}")
+def delete_vehicle(vehicle_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Delete a vehicle (soft delete)"""
+    try:
+        uuid_obj = UUID(vehicle_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid vehicle ID format"
+        )
+    
+    try:
+        # Verify vehicle ownership
+        vehicle = db.query(VehicleModel).filter(
+            VehicleModel.id == uuid_obj,
+            VehicleModel.owner_id == current_user["user_id"],
+            VehicleModel.deleted_at.is_(None)
+        ).first()
+        print("Vehicle found:", vehicle)
+        if not vehicle:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Vehicle not found or you don't have permission to delete it"
+            )
+        
+        # # Check for active bookings
+        # active_bookings = db.query(Booking).filter(
+        #     Booking.vehicle_id == uuid_obj,
+        #     Booking.status.in_(['confirmed', 'active']),
+        #     Booking.end_time > datetime.utcnow()
+        # ).count()
+        
+        # if active_bookings > 0:
+        #     raise HTTPException(
+        #         status_code=status.HTTP_409_CONFLICT,
+        #         detail="Cannot delete vehicle with active or upcoming bookings"
+        #     )
+        
+        # Soft delete - set deleted_at timestamp
+        vehicle.deleted_at = datetime.utcnow()
+        vehicle.available = False
+        
+        # Deactivate availability slots
+        db.query(VehicleAvailabilitySlot).filter(
+            VehicleAvailabilitySlot.vehicle_id == uuid_obj
+        ).update({"is_active": False})
+        
+        db.commit()
+        return {
+            "status": "success",
+            "message": "Vehicle deleted successfully",
+            "vehicle_id": str(vehicle_id)
+        }
+    
+    except IntegrityError as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete vehicle due to data constraints"
+        )
+    
+    except SQLAlchemyError as e:
+        print(e)
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error occurred while deleting vehicle"
+        )
+    
+    except HTTPException:
+        raise
+    
+    except Exception as e:
+        print(e)
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred"
+        )
