@@ -139,7 +139,8 @@ def get_user_vehicles(current_user: User = Depends(get_current_user_from_db), db
     """Get all vehicles registered by current user"""
     vehicles = db.query(VehicleModel).filter(
         VehicleModel.owner_id == current_user.id,
-        VehicleModel.deleted_at.is_(None)
+        VehicleModel.deleted_at.is_(None),
+        VehicleModel.available.is_(True)
     ).all()
     
     result = []

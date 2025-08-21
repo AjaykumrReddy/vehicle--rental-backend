@@ -247,7 +247,7 @@ def upload_vehicle_photos(
     db.commit()
     return {"message": f"Uploaded {len(files)} photos", "photos": uploaded_photos}
 
-@router.post("/{vehicle_id}/availability")
+@router.post("/{vehicle_id}/availability_slots")
 def set_vehicle_availability(
     vehicle_id: str,
     availability_data: SetAvailabilityRequest,
@@ -274,10 +274,26 @@ def set_vehicle_availability(
             detail="Vehicle not found"
         )
     
-    # Delete existing slots
-    db.query(VehicleAvailabilitySlot).filter(
-        VehicleAvailabilitySlot.vehicle_id == uuid_obj
-    ).delete()
+    # # Only delete future slots (preserve slots with bookings)
+    # current_time = datetime.utcnow()
+    
+    # # Get slots with active bookings
+    # slots_with_bookings = db.query(VehicleAvailabilitySlot.id).filter(
+    #     VehicleAvailabilitySlot.vehicle_id == uuid_obj,
+    #     VehicleAvailabilitySlot.start_datetime > current_time
+    # ).join(Booking, 
+    #     (Booking.vehicle_id == VehicleAvailabilitySlot.vehicle_id) &
+    #     (Booking.start_time >= VehicleAvailabilitySlot.start_datetime) &
+    #     (Booking.end_time <= VehicleAvailabilitySlot.end_datetime) &
+    #     (Booking.status.in_(['confirmed', 'active']))
+    # ).subquery()
+    
+    # # Delete only future slots without bookings
+    # db.query(VehicleAvailabilitySlot).filter(
+    #     VehicleAvailabilitySlot.vehicle_id == uuid_obj,
+    #     VehicleAvailabilitySlot.start_datetime > current_time,
+    #     ~VehicleAvailabilitySlot.id.in_(slots_with_bookings)
+    # ).delete(synchronize_session=False)
     
     # Create new slots
     for slot in availability_data.slots:
