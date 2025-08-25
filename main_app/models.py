@@ -48,30 +48,46 @@ class VehiclePhoto(Base):
     created_at = Column(DateTime(timezone=True), server_default=text('now()'))
     vehicle = relationship('VehicleModel', backref='photo_list')
 
-class BookingStatus(enum.Enum):
-    PENDING = "pending"
-    CONFIRMED = "confirmed"
-    ACTIVE = "active"
-    COMPLETED = "completed"
-    CANCELLED = "cancelled"
-
 class Booking(Base):
     __tablename__ = "bookings"
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=text('gen_random_uuid()'), index=True)
     vehicle_id = Column(UUID(as_uuid=True), ForeignKey('vehicles.id'), nullable=False, index=True)
     renter_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, index=True)
+    availability_slot_id = Column(UUID(as_uuid=True), ForeignKey('vehicle_availability_slots.id'), nullable=True, index=True)
     start_time = Column(DateTime(timezone=True), nullable=False, index=True)
     end_time = Column(DateTime(timezone=True), nullable=False, index=True)
-    status = Column(Enum(BookingStatus), nullable=False, server_default=text("'pending'"), index=True)
+    status = Column(Text, nullable=False, server_default=text("'pending'"), index=True)
+    
+    # Pricing breakdown
+    base_amount = Column(Numeric(10, 2), nullable=False)
+    security_deposit = Column(Numeric(10, 2), nullable=False, server_default=text('0'))
+    platform_fee = Column(Numeric(10, 2), nullable=False, server_default=text('0'))
     total_amount = Column(Numeric(10, 2), nullable=False)
+    
+    # Payment tracking
+    payment_status = Column(Text, nullable=False, server_default=text("'pending'"))
+    payment_method = Column(Text, nullable=True)
+    payment_id = Column(Text, nullable=True)  # External payment gateway ID
+    
+    # Locations
     pickup_location = Column(Geography(geometry_type='POINT', srid=4326), nullable=True)
     dropoff_location = Column(Geography(geometry_type='POINT', srid=4326), nullable=True)
+    pickup_address = Column(Text, nullable=True)
+    dropoff_address = Column(Text, nullable=True)
+    
+    # Additional info
+    special_instructions = Column(Text, nullable=True)
+    cancellation_reason = Column(Text, nullable=True)
+    cancelled_at = Column(DateTime(timezone=True), nullable=True)
+    confirmed_at = Column(DateTime(timezone=True), nullable=True)
+    
     created_at = Column(DateTime(timezone=True), server_default=text('now()'))
     updated_at = Column(DateTime(timezone=True), server_default=text('now()'))
     
     # Relationships
     vehicle = relationship('VehicleModel', backref='bookings')
     renter = relationship('User', backref='rentals')
+    availability_slot = relationship('VehicleAvailabilitySlot', backref='bookings')
 
 class VehicleAvailabilitySlot(Base):
     __tablename__ = "vehicle_availability_slots"

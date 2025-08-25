@@ -100,6 +100,40 @@ class AvailabilitySlotResponse(BaseModel):
 class SetAvailabilityRequest(BaseModel):
     slots: List[AvailabilitySlot]
 
+class BookingRequest(BaseModel):
+    vehicle_id: str
+    availability_slot_id: Optional[str] = None
+    start_time: datetime
+    end_time: datetime
+    base_amount: float
+    security_deposit: float = 0
+    platform_fee: float = 0
+    total_amount: float
+    pickup_address: Optional[str] = None
+    dropoff_address: Optional[str] = None
+    special_instructions: Optional[str] = None
+
+class BookingResponse(BaseModel):
+    id: UUID
+    vehicle_id: UUID
+    renter_id: UUID
+    availability_slot_id: Optional[UUID]
+    start_time: datetime
+    end_time: datetime
+    status: str
+    base_amount: float
+    security_deposit: float
+    platform_fee: float
+    total_amount: float
+    payment_status: str
+    pickup_address: Optional[str]
+    dropoff_address: Optional[str]
+    special_instructions: Optional[str]
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
 class VehicleResponse(BaseModel):
     id: UUID
     owner_id: UUID

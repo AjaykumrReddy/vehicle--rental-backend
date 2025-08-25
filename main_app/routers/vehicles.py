@@ -313,7 +313,7 @@ def set_vehicle_availability(
     return {"message": f"Set {len(availability_data.slots)} availability slots"}
 
 
-@router.get("/{vehicle_id}/availability", response_model=List[AvailabilitySlotResponse])
+@router.get("/{vehicle_id}/availability_slots", response_model=List[AvailabilitySlotResponse])
 def get_vehicle_availability(vehicle_id: str, db: Session = Depends(get_db)):
     """Get vehicle availability slots"""
     try:
