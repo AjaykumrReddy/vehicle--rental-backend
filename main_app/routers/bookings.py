@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import text
 from uuid import UUID
 from datetime import datetime, timezone
 from typing import List
@@ -107,17 +108,109 @@ def create_booking(
     
     return booking
 
-@router.get("/", response_model=List[BookingResponse])
+@router.get("/")
 def get_user_bookings(
     current_user_data: dict = Depends(get_current_user),
+    page: int = Query(1, ge=1, le=1000, description="Page number"),
+    limit: int = Query(20, ge=1, le=100, description="Items per page"),
+    status_filter: str = Query(None, regex="^(pending|confirmed|active|completed|cancelled)$", description="Filter by status"),
     db: Session = Depends(get_db)
 ):
-    """Get all bookings for current user"""
-    bookings = db.query(Booking).filter(
-        Booking.renter_id == current_user_data["user_id"]
-    ).order_by(Booking.created_at.desc()).all()
+    """Get user bookings with vehicle details - production optimized"""
+    try:
+        # Validate user_id format
+        try:
+            user_uuid = UUID(current_user_data["user_id"])
+        except (ValueError, KeyError):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid user session"
+            )
+        
+        offset = (page - 1) * limit
+        
+        # Build dynamic WHERE clause
+        where_conditions = ["b.renter_id = :user_id"]
+        params = {
+            "user_id": str(user_uuid),
+            "limit": limit + 1,  # Get one extra to check has_more
+            "offset": offset
+        }
+        
+        if status_filter:
+            where_conditions.append("b.status = :status")
+            params["status"] = status_filter
+        
+        where_clause = " AND ".join(where_conditions)
+        
+        # Optimized query with only essential fields
+        sql = f"""
+            SELECT 
+                b.id, b.vehicle_id, b.start_time, b.end_time, 
+                b.status, b.total_amount, b.created_at,
+                v.brand, v.model, v.vehicle_type, v.color, v.year
+            FROM bookings b
+            JOIN vehicles v ON b.vehicle_id = v.id
+            WHERE {where_clause}
+            ORDER BY b.created_at DESC
+            LIMIT :limit OFFSET :offset
+        """
+        
+        result = db.execute(text(sql), params).fetchall()
+        
+        # Check if there are more records
+        has_more = len(result) > limit
+        records = result[:limit] if has_more else result
+        
+        # Fast response formatting
+        bookings = []
+        for row in records:
+            try:
+                booking = {
+                    "id": str(row.id),
+                    "vehicle_id": str(row.vehicle_id),
+                    "start_time": row.start_time.isoformat() if row.start_time else None,
+                    "end_time": row.end_time.isoformat() if row.end_time else None,
+                    "status": row.status.upper() if row.status else "UNKNOWN",
+                    "total_amount": float(row.total_amount) if row.total_amount else 0.0,
+                    "created_at": row.created_at.isoformat() if row.created_at else None,
+                    "vehicle": {
+                        "brand": row.brand or "Unknown",
+                        "model": row.model or "Unknown",
+                        "vehicle_type": row.vehicle_type or "Unknown",
+                        "color": row.color or "Unknown",
+                        "year": row.year or 0
+                    }
+                }
+                bookings.append(booking)
+            except (AttributeError, ValueError) as e:
+                # Skip malformed records, log in production
+                continue
+        
+        return {
+            "success": True,
+            "data": {
+                "bookings": bookings,
+                "page": page,
+                "limit": limit,
+                "has_more": has_more,
+                "total_returned": len(bookings),
+                "filters": {
+                    "status": status_filter
+                }
+            }
+        }
     
-    return bookings
+    except HTTPException:
+        raise
+    
+    except Exception as e:
+        # Log error in production
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to fetch bookings. Please try again."
+        )
+
 
 @router.get("/{booking_id}", response_model=BookingResponse)
 def get_booking(
