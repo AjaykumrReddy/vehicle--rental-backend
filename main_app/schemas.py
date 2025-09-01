@@ -134,6 +134,32 @@ class BookingResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class OwnerDashboardStats(BaseModel):
+    total_vehicles: int
+    active_vehicles: int
+    total_bookings: int
+    pending_bookings: int
+    confirmed_bookings: int
+    active_bookings: int
+    total_earnings: float
+    monthly_earnings: float
+
+class OwnerBookingResponse(BaseModel):
+    id: UUID
+    vehicle_name: str
+    renter_name: str
+    renter_phone: str
+    start_time: datetime
+    end_time: datetime
+    status: str
+    amount: float
+    pickup_address: Optional[str]
+    special_instructions: Optional[str]
+    created_at: datetime
+
+class BookingActionRequest(BaseModel):
+    reason: Optional[str] = None
+
 class VehicleResponse(BaseModel):
     id: UUID
     owner_id: UUID
