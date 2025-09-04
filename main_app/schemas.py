@@ -177,3 +177,30 @@ class VehicleResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+# Messaging Schemas
+class SendMessageRequest(BaseModel):
+    booking_id: UUID
+    message_text: str = Field(..., min_length=1, max_length=1000)
+    message_type: str = Field("text", pattern="^(text|image|location)$")
+    attachment_url: Optional[str] = None
+
+class MessageResponse(BaseModel):
+    id: UUID
+    sender_id: UUID
+    sender_name: str
+    message_text: str
+    message_type: str
+    attachment_url: Optional[str]
+    is_read: bool
+    created_at: datetime
+
+class ConversationSummary(BaseModel):
+    id: UUID
+    booking_id: UUID
+    other_user_name: str
+    vehicle_info: str
+    last_message: str
+    last_message_at: datetime
+    unread_count: int
+    is_owner: bool

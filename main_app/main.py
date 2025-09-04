@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .routers import users, vehicles, bookings, owner
-from .routers import owner_additional
+from .routers import owner_additional, messaging, websocket
 
 app = FastAPI(
     title="Redi Rental API",
@@ -23,6 +23,8 @@ app.include_router(vehicles.router)
 app.include_router(bookings.router)
 app.include_router(owner.router)
 app.include_router(owner_additional.router)
+app.include_router(messaging.router)
+app.include_router(websocket.router)
 
 @app.get("/")
 def root():

@@ -118,4 +118,37 @@ class VehiclePricing(Base):
     updated_at = Column(DateTime(timezone=True), server_default=text('now()'))
     
     vehicle = relationship('VehicleModel', backref='pricing', uselist=False)
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text('gen_random_uuid()'), index=True)
+    booking_id = Column(UUID(as_uuid=True), ForeignKey('bookings.id'), nullable=False, unique=True, index=True)
+    owner_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, index=True)
+    renter_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, index=True)
+    last_message_at = Column(DateTime(timezone=True), server_default=text('now()'), index=True)
+    owner_unread_count = Column(Integer, server_default=text('0'))
+    renter_unread_count = Column(Integer, server_default=text('0'))
+    is_active = Column(Boolean, server_default=text('true'))
+    created_at = Column(DateTime(timezone=True), server_default=text('now()'))
+    
+    # Relationships
+    booking = relationship('Booking', backref='conversation')
+    owner = relationship('User', foreign_keys=[owner_id], backref='owned_conversations')
+    renter = relationship('User', foreign_keys=[renter_id], backref='renter_conversations')
+
+class Message(Base):
+    __tablename__ = "messages"
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text('gen_random_uuid()'), index=True)
+    conversation_id = Column(UUID(as_uuid=True), ForeignKey('conversations.id', ondelete='CASCADE'), nullable=False, index=True)
+    sender_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, index=True)
+    message_text = Column(Text, nullable=False)
+    message_type = Column(Text, server_default=text("'text'"))  # text, image, location, system
+    attachment_url = Column(Text, nullable=True)  # For images/files
+    is_read = Column(Boolean, server_default=text('false'), index=True)
+    read_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=text('now()'), index=True)
+    
+    # Relationships
+    conversation = relationship('Conversation', backref='messages')
+    sender = relationship('User', backref='sent_messages')
     
