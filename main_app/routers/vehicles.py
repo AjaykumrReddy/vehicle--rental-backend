@@ -75,8 +75,14 @@ def register_vehicle(vehicle: Vehicle, owner_id: str, db: Session = Depends(get_
         )
 
 @router.get("/nearby")
-def get_nearby_vehicles(lat: float, lng: float, radius_km: float = 5, db: Session = Depends(get_db)):
-    """Get vehicles within specified radius ordered by distance"""
+def get_nearby_vehicles(
+    lat: float, 
+    lng: float, 
+    radius_km: float = 5, 
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get vehicles within specified radius ordered by distance (excluding own vehicles)"""
     try:
         # Validate coordinates
         if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
@@ -91,6 +97,7 @@ def get_nearby_vehicles(lat: float, lng: float, radius_km: float = 5, db: Sessio
                 detail="Radius must be between 0 and 100 km"
             )
         
+        user_id = current_user["user_id"]
         point_wkt = f'SRID=4326;POINT({lng} {lat})'
         sql = """
             SELECT id, owner_id, vehicle_type, brand, model, ST_AsText(location::geometry) as location,
@@ -100,9 +107,10 @@ def get_nearby_vehicles(lat: float, lng: float, radius_km: float = 5, db: Sessio
             WHERE ST_DWithin(location::geography, ST_GeogFromText(:point), :radius)
             AND available = true
             AND deleted_at IS NULL
+            AND owner_id != :user_id
             ORDER BY ST_Distance(location::geography, ST_GeogFromText(:point))
         """
-        result = db.execute(text(sql), {"point": point_wkt, "radius": radius_km * 1000})
+        result = db.execute(text(sql), {"point": point_wkt, "radius": radius_km * 1000, "user_id": user_id})
         return result.mappings().all()
     
     except SQLAlchemyError as e:
