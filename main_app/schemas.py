@@ -204,3 +204,15 @@ class ConversationSummary(BaseModel):
     last_message_at: datetime
     unread_count: int
     is_owner: bool
+
+# Payment Schemas
+class CreatePaymentRequest(BaseModel):
+    booking_id: UUID
+    amount: float = Field(..., gt=0)
+    currency: str = Field("INR", pattern="^[A-Z]{3}$")
+
+class PaymentOrderResponse(BaseModel):
+    order_id: str
+    amount: int
+    currency: str
+    key: str

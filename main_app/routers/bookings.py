@@ -147,7 +147,7 @@ def get_user_bookings(
         sql = f"""
             SELECT 
                 b.id, b.vehicle_id, b.start_time, b.end_time, 
-                b.status, b.total_amount, b.created_at,
+                b.status, b.total_amount, b.created_at, b.payment_status,
                 v.brand, v.model, v.vehicle_type, v.color, v.year
             FROM bookings b
             JOIN vehicles v ON b.vehicle_id = v.id
@@ -172,6 +172,7 @@ def get_user_bookings(
                     "start_time": row.start_time.isoformat() if row.start_time else None,
                     "end_time": row.end_time.isoformat() if row.end_time else None,
                     "status": row.status.upper() if row.status else "UNKNOWN",
+                    "payment_status": row.payment_status.upper() if row.payment_status else "UNKNOWN",
                     "total_amount": float(row.total_amount) if row.total_amount else 0.0,
                     "created_at": row.created_at.isoformat() if row.created_at else None,
                     "vehicle": {
