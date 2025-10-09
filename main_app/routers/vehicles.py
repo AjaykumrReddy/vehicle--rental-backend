@@ -6,7 +6,7 @@ from geoalchemy2.elements import WKTElement
 from geoalchemy2.functions import ST_X, ST_Y
 from uuid import UUID
 from typing import List
-from datetime import datetime, time, timezone
+from datetime import datetime, timezone
 import uuid
 from supabase import create_client, Client
 import os
@@ -353,6 +353,67 @@ def get_vehicle_availability(vehicle_id: str, db: Session = Depends(get_db)):
     ).order_by(VehicleAvailabilitySlot.start_datetime).all()
     
     return slots
+
+@router.delete("/{vehicle_id}/availability_slots/{slot_id}")
+def delete_availability_slot(
+    vehicle_id: str,
+    slot_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a vehicle availability slot"""
+    try:
+        vehicle_uuid = UUID(vehicle_id)
+        slot_uuid = UUID(slot_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid ID format"
+        )
+    
+    try:
+        # Get slot and verify ownership through vehicle
+        slot = db.query(VehicleAvailabilitySlot).join(VehicleModel).filter(
+            VehicleAvailabilitySlot.id == slot_uuid,
+            VehicleAvailabilitySlot.vehicle_id == vehicle_uuid,
+            VehicleModel.owner_id == current_user["user_id"]
+        ).first()
+        
+        if not slot:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Availability slot not found"
+            )
+        
+        # Check for active bookings in this slot
+        active_bookings = db.query(Booking).filter(
+            Booking.availability_slot_id == slot_uuid,
+            Booking.status.in_(['confirmed', 'active'])
+        ).count()
+        
+        if active_bookings > 0:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cannot delete slot with active bookings"
+            )
+        
+        # Soft delete - set is_active to false
+        slot.is_active = False
+        db.commit()
+        
+        return {
+            "status": "success",
+            "message": "Availability slot deleted successfully"
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete availability slot"
+        )
 
 @router.delete("/{vehicle_id}")
 def delete_vehicle(vehicle_id: str, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
