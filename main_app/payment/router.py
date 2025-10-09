@@ -60,11 +60,13 @@ async def verify_payment(
         return result
     
     except ValueError as e:
+        print(f"#verify_payment -ValueError exception - {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
     except Exception as e:
+        print(f"#verify_payment - exception - {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Payment verification failed"

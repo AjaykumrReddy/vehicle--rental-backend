@@ -6,7 +6,7 @@ from geoalchemy2.elements import WKTElement
 from geoalchemy2.functions import ST_X, ST_Y
 from uuid import UUID
 from typing import List
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 import uuid
 from supabase import create_client, Client
 import os
@@ -99,27 +99,39 @@ def get_nearby_vehicles(
         
         user_id = current_user["user_id"]
         point_wkt = f'SRID=4326;POINT({lng} {lat})'
+        
+        # Only show vehicles with future availability slots
         sql = """
-            SELECT id, owner_id, vehicle_type, brand, model, ST_AsText(location::geometry) as location,
-            color, year, available, created_at,
-            ROUND(ST_Distance(location::geography, ST_GeogFromText(:point))::numeric, 0) as distance_meters
-            FROM vehicles
-            WHERE ST_DWithin(location::geography, ST_GeogFromText(:point), :radius)
-            AND available = true
-            AND deleted_at IS NULL
-            AND owner_id != :user_id
-            ORDER BY ST_Distance(location::geography, ST_GeogFromText(:point))
+            SELECT v.id, v.owner_id, v.vehicle_type, v.brand, v.model, ST_AsText(v.location::geometry) as location,
+            v.color, v.year, v.available, v.created_at, u.full_name as owner_name,
+            ROUND(ST_Distance(v.location::geography, ST_GeogFromText(:point))::numeric, 0) as distance_meters
+            FROM vehicles v
+            JOIN users u ON v.owner_id = u.id
+            WHERE ST_DWithin(v.location::geography, ST_GeogFromText(:point), :radius)
+            AND v.available = true
+            AND v.deleted_at IS NULL
+            AND v.owner_id != :user_id
+            AND EXISTS (
+                SELECT 1 FROM vehicle_availability_slots vas 
+                WHERE vas.vehicle_id = v.id 
+                AND vas.end_datetime > NOW()
+                AND vas.is_active = true
+            )
+            ORDER BY ST_Distance(v.location::geography, ST_GeogFromText(:point))
+            LIMIT 50
         """
         result = db.execute(text(sql), {"point": point_wkt, "radius": radius_km * 1000, "user_id": user_id})
         return result.mappings().all()
     
     except SQLAlchemyError as e:
+        print(f"#get_nearby_vehicles - exception - {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database query failed"
         )
     
     except Exception as e:
+        print(f"#get_nearby_vehicles - exception - {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred"
@@ -332,9 +344,12 @@ def get_vehicle_availability(vehicle_id: str, db: Session = Depends(get_db)):
             detail="Invalid vehicle ID format"
         )
     
+    current_time = datetime.now(timezone.utc)
+    
     slots = db.query(VehicleAvailabilitySlot).filter(
         VehicleAvailabilitySlot.vehicle_id == uuid_obj,
-        VehicleAvailabilitySlot.is_active == True
+        VehicleAvailabilitySlot.is_active == True,
+        VehicleAvailabilitySlot.end_datetime > current_time
     ).order_by(VehicleAvailabilitySlot.start_datetime).all()
     
     return slots
