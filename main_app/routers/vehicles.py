@@ -74,6 +74,93 @@ def register_vehicle(vehicle: Vehicle, owner_id: str, db: Session = Depends(get_
             detail="An unexpected error occurred. Please try again."
         )
 
+@router.get("/search")
+def search_available_vehicles(
+    lat: float,
+    lng: float,
+    start_datetime: str,
+    end_datetime: str,
+    radius_km: float = 10,
+    db: Session = Depends(get_db)
+):
+    """Search vehicles available for specific dates and location"""
+    try:
+        # Validate coordinates
+        if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid coordinates"
+            )
+        
+        # Parse datetime strings
+        try:
+            start_dt = datetime.fromisoformat(start_datetime.replace('Z', '+00:00'))
+            end_dt = datetime.fromisoformat(end_datetime.replace('Z', '+00:00'))
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid datetime format. Use ISO format"
+            )
+        
+        if start_dt >= end_dt:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Start time must be before end time"
+            )
+        point_wkt = f'SRID=4326;POINT({lng} {lat})'
+        
+        # Find vehicles with availability slots that cover the requested period
+        sql = """
+            SELECT v.id, v.owner_id, v.vehicle_type, v.brand, v.model, 
+                   ST_AsText(v.location::geometry) as location, v.color, v.year, 
+                   v.available, v.created_at, u.full_name as owner_name,
+                   ROUND(ST_Distance(v.location::geography, ST_GeogFromText(:point))::numeric, 0) as distance_meters,
+                   MIN(vas.hourly_rate) as hourly_rate, 
+                   MIN(vas.daily_rate) as daily_rate, 
+                   MIN(vas.weekly_rate) as weekly_rate,
+                   COALESCE((
+                       SELECT json_agg(json_build_object('id', vp.id, 'photo_url', vp.photo_url, 'is_primary', vp.is_primary))
+                       FROM vehicle_photos vp WHERE vp.vehicle_id = v.id
+                   ), '[]'::json) as photos
+            FROM vehicles v
+            JOIN users u ON v.owner_id = u.id
+            JOIN vehicle_availability_slots vas ON vas.vehicle_id = v.id
+            WHERE ST_DWithin(v.location::geography, ST_GeogFromText(:point), :radius)
+            AND v.available = true
+            AND v.deleted_at IS NULL
+            AND vas.is_active = true
+            AND vas.start_datetime <= :start_time
+            AND vas.end_datetime >= :end_time
+            AND NOT EXISTS (
+                SELECT 1 FROM bookings b 
+                WHERE b.vehicle_id = v.id 
+                AND b.status IN ('confirmed', 'active')
+                AND NOT (b.end_time <= :start_time OR b.start_time >= :end_time)
+            )
+            GROUP BY v.id, v.owner_id, v.vehicle_type, v.brand, v.model, v.location, 
+                     v.color, v.year, v.available, v.created_at, u.full_name
+            ORDER BY distance_meters
+            LIMIT 50
+        """
+        
+        result = db.execute(text(sql), {
+            "point": point_wkt, 
+            "radius": radius_km * 1000,
+            "start_time": start_dt,
+            "end_time": end_dt
+        })
+        
+        return result.mappings().all()
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Search vehicles error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Search failed"
+        )
+
 @router.get("/nearby")
 def get_nearby_vehicles(
     lat: float, 
