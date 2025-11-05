@@ -8,6 +8,9 @@ from ..db import get_db
 from ..models import VehicleModel, Booking, VehicleAvailabilitySlot, VehiclePhoto
 from ..schemas import OwnerDashboardStats, OwnerBookingResponse, BookingActionRequest
 from ..auth import get_current_user
+from ..logging_config import get_logger, log_error
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/owner", tags=["owner"])
 
@@ -41,9 +44,31 @@ def approve_booking(
     
     booking.status = 'confirmed'
     booking.confirmed_at = datetime.now(timezone.utc)
-    db.commit()
     
-    return {"message": "Booking approved successfully"}
+    try:
+        db.commit()
+        
+        logger.info(f"Booking approved by owner", extra={
+            "booking_id": str(booking_uuid),
+            "owner_id": current_user_data["user_id"],
+            "renter_id": str(booking.renter_id),
+            "vehicle_id": str(booking.vehicle_id),
+            "booking_amount": float(booking.total_amount),
+            "booking_start": booking.start_time.isoformat()
+        })
+        
+        return {"message": "Booking approved successfully"}
+    
+    except Exception as e:
+        db.rollback()
+        log_error(logger, e, {
+            "booking_id": str(booking_uuid),
+            "owner_id": current_user_data["user_id"]
+        }, "booking_approval_error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to approve booking"
+        )
 
 @router.patch("/bookings/{booking_id}/reject")
 def reject_booking(
@@ -76,9 +101,32 @@ def reject_booking(
     booking.status = 'cancelled'
     booking.cancelled_at = datetime.now(timezone.utc)
     booking.cancellation_reason = f"Rejected by owner: {reason}"
-    db.commit()
     
-    return {"message": "Booking rejected successfully"}
+    try:
+        db.commit()
+        
+        logger.info(f"Booking rejected by owner", extra={
+            "booking_id": str(booking_uuid),
+            "owner_id": current_user_data["user_id"],
+            "renter_id": str(booking.renter_id),
+            "vehicle_id": str(booking.vehicle_id),
+            "rejection_reason": reason,
+            "booking_amount": float(booking.total_amount)
+        })
+        
+        return {"message": "Booking rejected successfully"}
+    
+    except Exception as e:
+        db.rollback()
+        log_error(logger, e, {
+            "booking_id": str(booking_uuid),
+            "owner_id": current_user_data["user_id"],
+            "reason": reason
+        }, "booking_rejection_error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to reject booking"
+        )
 
 @router.get("/bookings/pending")
 def get_pending_bookings(
@@ -247,13 +295,35 @@ def toggle_vehicle_availability(
             detail="Vehicle not found"
         )
     
+    old_status = vehicle.available
     vehicle.available = not vehicle.available
-    db.commit()
     
-    return {
-        "message": f"Vehicle {'activated' if vehicle.available else 'deactivated'} successfully",
-        "available": vehicle.available
-    }
+    try:
+        db.commit()
+        
+        logger.info(f"Vehicle availability toggled", extra={
+            "vehicle_id": str(vehicle_uuid),
+            "owner_id": current_user_data["user_id"],
+            "old_status": old_status,
+            "new_status": vehicle.available,
+            "vehicle_info": f"{vehicle.brand} {vehicle.model}"
+        })
+        
+        return {
+            "message": f"Vehicle {'activated' if vehicle.available else 'deactivated'} successfully",
+            "available": vehicle.available
+        }
+    
+    except Exception as e:
+        db.rollback()
+        log_error(logger, e, {
+            "vehicle_id": str(vehicle_uuid),
+            "owner_id": current_user_data["user_id"]
+        }, "vehicle_availability_toggle_error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update vehicle availability"
+        )
 
 @router.get("/earnings")
 def get_earnings_summary(

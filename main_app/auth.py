@@ -7,8 +7,10 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 import os
 from dotenv import load_dotenv
+from .logging_config import get_logger
 
 load_dotenv()
+logger = get_logger(__name__)
 
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
 ALGORITHM = "HS256"
@@ -33,6 +35,14 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    
+    logger.info(f"Access token created", extra={
+        "user_id": data.get("sub"),
+        "phone": data.get("phone"),
+        "expires_at": expire.isoformat(),
+        "token_type": "access_token"
+    })
+    
     return encoded_jwt
 
 security = HTTPBearer()
@@ -41,13 +51,29 @@ def verify_token(token: str) -> dict:
     """Verify and decode JWT token"""
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        
+        logger.debug(f"Token verified successfully", extra={
+            "user_id": payload.get("sub"),
+            "phone": payload.get("phone"),
+            "token_exp": payload.get("exp")
+        })
+        
         return payload
     except jwt.ExpiredSignatureError:
+        logger.warning(f"Expired token verification attempt", extra={
+            "token_prefix": token[:20] + "..." if len(token) > 20 else token,
+            "error_type": "expired_token"
+        })
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired"
         )
-    except jwt.JWTError:
+    except jwt.JWTError as e:
+        logger.warning(f"Invalid token verification attempt", extra={
+            "token_prefix": token[:20] + "..." if len(token) > 20 else token,
+            "error_type": "invalid_token",
+            "jwt_error": str(e)
+        })
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token"

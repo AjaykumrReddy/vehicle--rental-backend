@@ -14,6 +14,7 @@ from ..db import get_db
 from ..models import VehicleModel, VehiclePhoto, VehiclePricing, VehicleAvailabilitySlot, Booking
 from ..schemas import Vehicle, VehicleResponse, SetAvailabilityRequest, AvailabilitySlotResponse
 from ..auth import get_current_user
+from ..logging_config import get_logger, log_api_request, log_api_response, log_database_operation, log_business_event, log_error
 
 # Supabase client with service role key for server operations
 supabase_url = os.getenv("SUPABASE_URL")
@@ -21,10 +22,13 @@ supabase_service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 supabase: Client = create_client(supabase_url, supabase_service_key)
 
 router = APIRouter(prefix="/vehicles", tags=["vehicles"])
+logger = get_logger("vehicles")
 
 @router.post("/register")
 def register_vehicle(vehicle: Vehicle, owner_id: str, db: Session = Depends(get_db)):
     """Register a new vehicle with user-friendly error messages"""
+    log_api_request(logger, "POST", "/vehicles/register", owner_id)
+    
     try:
         point_wkt = WKTElement(f'POINT({vehicle.longitude} {vehicle.latitude})', srid=4326)
         db_vehicle = VehicleModel(
@@ -41,10 +45,20 @@ def register_vehicle(vehicle: Vehicle, owner_id: str, db: Session = Depends(get_
         db.add(db_vehicle)
         db.commit()
         db.refresh(db_vehicle)
+        
+        log_database_operation(logger, "INSERT", "vehicles", owner_id, str(db_vehicle.id))
+        log_business_event(logger, "vehicle_registered", {
+            "vehicle_id": str(db_vehicle.id),
+            "owner_id": owner_id,
+            "brand": vehicle.brand,
+            "model": vehicle.model
+        })
+        
         return {"status": "success", "vehicle_id": str(db_vehicle.id)}
     
     except IntegrityError as e:
         db.rollback()
+        log_error(logger, e, {"owner_id": owner_id, "license_plate": vehicle.license_plate}, "vehicle_registration")
         if "license_plate" in str(e.orig):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -69,6 +83,7 @@ def register_vehicle(vehicle: Vehicle, owner_id: str, db: Session = Depends(get_
     
     except Exception as e:
         db.rollback()
+        log_error(logger, e, {"owner_id": owner_id}, "vehicle_registration")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred. Please try again."
@@ -155,7 +170,7 @@ def search_available_vehicles(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Search vehicles error: {e}")
+        log_error(logger, e, {"lat": lat, "lng": lng, "start_datetime": start_datetime, "end_datetime": end_datetime}, "search_available_vehicles")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Search failed"
@@ -211,14 +226,14 @@ def get_nearby_vehicles(
         return result.mappings().all()
     
     except SQLAlchemyError as e:
-        print(f"#get_nearby_vehicles - exception - {e}")
+        log_error(logger, e, {"user_id": user_id, "lat": lat, "lng": lng, "radius_km": radius_km}, "get_nearby_vehicles_db_error")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database query failed"
         )
     
     except Exception as e:
-        print(f"#get_nearby_vehicles - exception - {e}")
+        log_error(logger, e, {"user_id": user_id, "lat": lat, "lng": lng, "radius_km": radius_km}, "get_nearby_vehicles_error")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred"
@@ -272,12 +287,14 @@ def get_vehicle_details(vehicle_id: str, db: Session = Depends(get_db)):
         }
     
     except SQLAlchemyError as e:
+        log_error(logger, e, {"vehicle_id": vehicle_id}, "get_vehicle_details_db_error")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database error occurred"
         )
     
     except Exception as e:
+        log_error(logger, e, {"vehicle_id": vehicle_id}, "get_vehicle_details_error")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred"
@@ -346,6 +363,7 @@ def upload_vehicle_photos(
             uploaded_photos.append({"url": public_url, "is_primary": (i == 0)})
             
         except Exception as e:
+            log_error(logger, e, {"vehicle_id": vehicle_id, "user_id": current_user_data["user_id"], "filename": file.filename}, "photo_upload_error")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to upload photo: {str(e)}"
@@ -449,6 +467,9 @@ def delete_availability_slot(
     db: Session = Depends(get_db)
 ):
     """Delete a vehicle availability slot"""
+    user_id = current_user["user_id"]
+    log_api_request(logger, "DELETE", f"/vehicles/{vehicle_id}/availability_slots/{slot_id}", user_id)
+    
     try:
         vehicle_uuid = UUID(vehicle_id)
         slot_uuid = UUID(slot_id)
@@ -488,6 +509,13 @@ def delete_availability_slot(
         slot.is_active = False
         db.commit()
         
+        log_database_operation(logger, "SOFT_DELETE", "vehicle_availability_slots", user_id, slot_id)
+        log_business_event(logger, "availability_slot_deleted", {
+            "slot_id": slot_id,
+            "vehicle_id": vehicle_id,
+            "user_id": user_id
+        })
+        
         return {
             "status": "success",
             "message": "Availability slot deleted successfully"
@@ -497,6 +525,7 @@ def delete_availability_slot(
         raise
     except Exception as e:
         db.rollback()
+        log_error(logger, e, {"vehicle_id": vehicle_id, "slot_id": slot_id, "user_id": user_id}, "delete_availability_slot")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete availability slot"

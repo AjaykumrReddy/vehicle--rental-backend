@@ -10,6 +10,9 @@ from ..models import Conversation, Message, Booking, VehicleModel, User
 from ..schemas import SendMessageRequest, MessageResponse, ConversationSummary
 from ..auth import get_current_user
 from .websocket import notify_new_message, notify_message_read
+from ..logging_config import get_logger, log_error
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/messages", tags=["messaging"])
 
@@ -90,6 +93,15 @@ async def send_message(
             "created_at": message.created_at.isoformat()
         })
         
+        logger.info(f"Message sent successfully", extra={
+            "message_id": str(message.id),
+            "sender_id": str(user_id),
+            "recipient_id": str(recipient_id),
+            "booking_id": str(booking_id),
+            "message_type": message.message_type,
+            "message_length": len(message.message_text)
+        })
+        
         return {
             "success": True,
             "message_id": str(message.id),
@@ -100,6 +112,11 @@ async def send_message(
         raise
     except Exception as e:
         db.rollback()
+        log_error(logger, e, {
+            "user_id": current_user.get("user_id"),
+            "booking_id": str(message_data.booking_id),
+            "message_type": message_data.message_type
+        }, "send_message_error")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to send message"

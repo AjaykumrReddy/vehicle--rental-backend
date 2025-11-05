@@ -9,6 +9,9 @@ from ..db import get_db
 from ..models import Booking, VehicleModel, VehicleAvailabilitySlot
 from ..schemas import BookingRequest, BookingResponse
 from ..auth import get_current_user
+from ..logging_config import get_logger, log_error
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 
@@ -19,9 +22,21 @@ def create_booking(
     db: Session = Depends(get_db)
 ):
     """Create a new booking"""
+    logger.info(f"Booking creation attempt", extra={
+        "user_id": current_user_data["user_id"],
+        "vehicle_id": booking_data.vehicle_id,
+        "total_amount": float(booking_data.total_amount),
+        "start_time": booking_data.start_time.isoformat(),
+        "end_time": booking_data.end_time.isoformat()
+    })
+    
     try:
         vehicle_uuid = UUID(booking_data.vehicle_id)
     except ValueError:
+        logger.warning(f"Invalid vehicle ID format in booking request", extra={
+            "user_id": current_user_data["user_id"],
+            "vehicle_id": booking_data.vehicle_id
+        })
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid vehicle ID format"
@@ -49,6 +64,13 @@ def create_booking(
     ).first()
     
     if conflicting_booking:
+        logger.warning(f"Booking conflict detected", extra={
+            "user_id": current_user_data["user_id"],
+            "vehicle_id": str(vehicle_uuid),
+            "conflicting_booking_id": str(conflicting_booking.id),
+            "requested_start": booking_data.start_time.isoformat(),
+            "requested_end": booking_data.end_time.isoformat()
+        })
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Vehicle is already booked for this time period"
@@ -102,11 +124,32 @@ def create_booking(
         special_instructions=booking_data.special_instructions
     )
     
-    db.add(booking)
-    db.commit()
-    db.refresh(booking)
+    try:
+        db.add(booking)
+        db.commit()
+        db.refresh(booking)
+        
+        logger.info(f"Booking created successfully", extra={
+            "booking_id": str(booking.id),
+            "user_id": current_user_data["user_id"],
+            "vehicle_id": str(vehicle_uuid),
+            "total_amount": float(booking_data.total_amount),
+            "duration_hours": (booking_data.end_time - booking_data.start_time).total_seconds() / 3600
+        })
+        
+        return booking
     
-    return booking
+    except Exception as e:
+        db.rollback()
+        log_error(logger, e, {
+            "user_id": current_user_data["user_id"],
+            "vehicle_id": str(vehicle_uuid),
+            "total_amount": float(booking_data.total_amount)
+        }, "booking_creation_error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create booking"
+        )
 
 @router.get("/")
 def get_user_bookings(
@@ -206,7 +249,12 @@ def get_user_bookings(
         raise
     
     except Exception as e:
-        # Log error in production
+        log_error(logger, e, {
+            "user_id": current_user_data.get("user_id"),
+            "page": page,
+            "limit": limit,
+            "status_filter": status_filter
+        }, "get_user_bookings_error")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Unable to fetch bookings. Please try again."
@@ -277,9 +325,29 @@ def cancel_booking(
     booking.cancelled_at = datetime.now(timezone.utc)
     booking.cancellation_reason = "Cancelled by user"
     
-    db.commit()
+    try:
+        db.commit()
+        
+        logger.info(f"Booking cancelled by user", extra={
+            "booking_id": str(booking_uuid),
+            "user_id": current_user_data["user_id"],
+            "vehicle_id": str(booking.vehicle_id),
+            "cancelled_amount": float(booking.total_amount),
+            "original_start_time": booking.start_time.isoformat()
+        })
+        
+        return {"message": "Booking cancelled successfully"}
     
-    return {"message": "Booking cancelled successfully"}
+    except Exception as e:
+        db.rollback()
+        log_error(logger, e, {
+            "booking_id": str(booking_uuid),
+            "user_id": current_user_data["user_id"]
+        }, "booking_cancellation_error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to cancel booking"
+        )
 
 @router.patch("/{booking_id}/confirm")
 def confirm_booking(

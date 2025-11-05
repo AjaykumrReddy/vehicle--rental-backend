@@ -1,0 +1,38 @@
+filebeat.inputs:
+- type: log
+  enabled: true
+  paths:
+    - /app/logs/*.log
+  json.keys_under_root: true
+  json.add_error_key: true
+  fields:
+    app_service: redi-rental
+    environment: local
+  fields_under_root: true
+  processors:
+    - rename:
+        fields:
+          - from: "service"
+            to: "app_service"
+        ignore_missing: true
+    - drop_fields:
+        fields:
+          - "agent"
+          - "ecs"
+          - "host"
+          - "input"
+          - "log"
+          - "error.message"
+
+output.elasticsearch:
+  hosts: ["elasticsearch:9200"]
+  index: "redi-rental-logs-%{+yyyy.MM.dd}"
+
+setup.template.name: "redi-rental-logs"
+setup.template.pattern: "redi-rental-logs-*"
+setup.template.enabled: true
+setup.template.settings:
+  index.number_of_shards: 1
+  index.number_of_replicas: 0
+
+logging.level: info

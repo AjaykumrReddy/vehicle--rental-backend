@@ -3,6 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from .routers import users, vehicles, bookings, owner
 from .routers import owner_additional, messaging, websocket
 from .payment import router as payment_router
+from .logging_config import setup_logging
+from .middleware import LoggingMiddleware
+
+# Initialize logging
+setup_logging()
 
 app = FastAPI(
     title="Redi Rental API",
@@ -18,6 +23,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add logging middleware
+app.add_middleware(LoggingMiddleware)
+
 # Include routers
 app.include_router(users.router)
 app.include_router(vehicles.router)
@@ -30,7 +38,7 @@ app.include_router(payment_router.router)
 
 @app.get("/")
 def root():
-    return {"message": "Redi Rental API", "version": "1.0.0"}
+    return {"message": "Redi Rental API", "version": "1.0.1"}
 
 @app.get("/health")
 def health_check():
