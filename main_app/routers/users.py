@@ -9,6 +9,7 @@ from ..schemas import UserRegister, UserResponse, SendOTP, VerifyOTP, Token, OTP
 from ..auth import generate_otp, is_otp_valid, create_access_token, OTP_EXPIRE_MINUTES, ACCESS_TOKEN_EXPIRE_DAYS, get_current_user
 from geoalchemy2.functions import ST_X, ST_Y
 from ..logging_config import get_logger, log_error
+from ..sms_service import sms_service
 
 logger = get_logger(__name__)
 
@@ -93,6 +94,13 @@ def send_otp(otp_data: SendOTP, db: Session = Depends(get_db)):
         
         # TODO: Send OTP via SMS service (Twilio, AWS SNS, etc.)
         print(f"OTP for {otp_data.phone_number}: {otp_code}")  # Remove in production
+        # sms_sent = sms_service.send_otp(otp_data.phone_number, otp_code)
+        # if not sms_sent:
+        #     logger.error(f"Failed to send OTP SMS", extra={"phone_number": otp_data.phone_number, "user_id": str(user.id)})
+        #     raise HTTPException(
+        #         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        #         detail="Failed to send OTP. Please try again."
+        #     )
         
         return {
             "message": "OTP sent successfully",

@@ -1,10 +1,11 @@
-from sqlalchemy import Column, String, Boolean, DateTime, Text, ForeignKey, Integer, text, Enum, Numeric, Time, Date
+from sqlalchemy import Column, String, Boolean, DateTime, Text, ForeignKey, Integer, text, Enum, Numeric, Time, Date, JSON, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from geoalchemy2 import Geography
 from datetime import datetime, timezone
 from .db import Base
 import enum
+import uuid
 
 class User(Base):
     __tablename__ = "users"
@@ -152,5 +153,49 @@ class Message(Base):
     conversation = relationship('Conversation', backref='messages')
     sender = relationship('User', backref='sent_messages')
 
-
+class ErrorAudit(Base):
+    __tablename__ = "error_audits"
     
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    
+    # Error Classification
+    error_type = Column(String(50), nullable=False)  # API_ERROR, UI_ERROR, THIRD_PARTY_ERROR
+    severity = Column(String(20), nullable=False)    # LOW, MEDIUM, HIGH, CRITICAL
+    source = Column(String(50), nullable=False)      # BACKEND, FRONTEND, EXTERNAL
+    
+    # Context Information
+    user_id = Column(UUID(as_uuid=True), nullable=True)
+    session_id = Column(String(100), nullable=True)
+    request_id = Column(String(100), nullable=True)
+    
+    # Error Details
+    error_code = Column(String(50), nullable=True)
+    error_message = Column(Text, nullable=False)
+    stack_trace = Column(Text, nullable=True)
+    
+    # Request Context
+    endpoint = Column(String(200), nullable=True)
+    http_method = Column(String(10), nullable=True)
+    http_status = Column(Integer, nullable=True)
+    user_agent = Column(String(500), nullable=True)
+    ip_address = Column(String(45), nullable=True)
+    
+    # Additional Context
+    context_data = Column(JSON, nullable=True)  # Custom context data
+    environment = Column(String(20), default="production")
+    
+    # Tracking
+    resolved = Column(Boolean, default=False)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    resolved_by = Column(UUID(as_uuid=True), nullable=True)
+    
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    
+    # Indexes for performance
+    __table_args__ = (
+        Index('idx_error_type_created', 'error_type', 'created_at'),
+        Index('idx_severity_created', 'severity', 'created_at'),
+        Index('idx_user_created', 'user_id', 'created_at'),
+        Index('idx_endpoint_created', 'endpoint', 'created_at'),
+        Index('idx_resolved_created', 'resolved', 'created_at'),
+    )

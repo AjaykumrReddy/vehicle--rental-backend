@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, validator
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from uuid import UUID
 from datetime import datetime, time, date
 from decimal import Decimal
@@ -216,3 +216,47 @@ class PaymentOrderResponse(BaseModel):
     amount: int
     currency: str
     key: str
+
+# Error Audit Schemas
+class UIErrorReport(BaseModel):
+    error_message: str = Field(..., min_length=1, max_length=1000)
+    error_code: Optional[str] = None
+    stack_trace: Optional[str] = None
+    user_id: Optional[str] = None
+    session_id: Optional[str] = None
+    page_url: Optional[str] = None
+    metadata: Optional[dict] = None
+
+class ErrorAuditResponse(BaseModel):
+    id: UUID
+    error_type: str
+    severity: str
+    source: str
+    user_id: Optional[UUID]
+    error_code: Optional[str]
+    error_message: str
+    endpoint: Optional[str]
+    http_method: Optional[str]
+    http_status: Optional[int]
+    resolved: bool
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class ErrorAuditCreate(BaseModel):
+    error_type: str
+    severity: str
+    source: str
+    error_message: str
+    error_code: Optional[str] = None
+    endpoint: Optional[str] = None
+    metadata: Optional[dict] = None
+
+class ErrorAuditStats(BaseModel):
+    total_errors: int
+    resolved_errors: int
+    unresolved_errors: int
+    severity_breakdown: dict
+    type_breakdown: dict
+    top_error_endpoints: List[dict]

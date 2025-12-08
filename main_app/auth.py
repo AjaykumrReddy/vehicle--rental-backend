@@ -46,6 +46,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 security = HTTPBearer()
+optional_security = HTTPBearer(auto_error=False)
 
 def verify_token(token: str) -> dict:
     """Verify and decode JWT token"""
@@ -91,3 +92,18 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         )
     
     return {"user_id": user_id, "phone": payload.get("phone")}
+
+def get_optional_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security)):
+    """Get current user if token provided, otherwise return None"""
+    if not credentials:
+        return None
+    
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        if user_id:
+            return {"user_id": user_id, "phone": payload.get("phone")}
+    except jwt.JWTError:
+        pass
+    
+    return None

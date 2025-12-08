@@ -610,3 +610,18 @@ def delete_vehicle(vehicle_id: str, current_user: dict = Depends(get_current_use
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An unexpected error occurred"
         )
+
+# get vehicle photos
+@router.get("/{vehicle_id}/photos")
+def get_vehicle_photos(vehicle_id: str, db: Session = Depends(get_db)):
+    """Fetch vehicle photos"""
+    try:
+        uuid_obj = UUID(vehicle_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid vehicle ID format"
+        )
+
+    photos = db.query(VehiclePhoto).filter(VehiclePhoto.vehicle_id == uuid_obj).all()
+    return photos
