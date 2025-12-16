@@ -10,3 +10,6 @@ pydantic==2.5.0
 geoalchemy2==0.14.2
 python-dotenv==1.0.0
 twilio==8.10.3
+opencv-python==4.8.1.78
+Pillow==10.1.0
+numpy==1.26.2

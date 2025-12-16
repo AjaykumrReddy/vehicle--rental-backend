@@ -344,32 +344,52 @@ def upload_vehicle_photos(
         # Upload to Supabase Storage
         try:
             file_content = file.file.read()
-            result = supabase.storage.from_("vehicle-photos").upload(
-                unique_filename, 
+            
+            # Blur license plates before upload
+            from ..image_processing import plate_blurrer
+            blurred_content = plate_blurrer.blur_license_plate(file_content)
+            
+            # Upload blurred version (public)
+            blurred_filename = f"vehicles/{vehicle_id}/blurred_{uuid.uuid4()}.{file_extension}"
+            supabase.storage.from_("vehicle-photos").upload(
+                blurred_filename, 
+                blurred_content,
+                {"content-type": file.content_type}
+            )
+            blurred_url = supabase.storage.from_("vehicle-photos").get_public_url(blurred_filename)
+            
+            # Upload original version (same bucket, different folder)
+            original_filename = f"vehicles/{vehicle_id}/original_{uuid.uuid4()}.{file_extension}"
+            supabase.storage.from_("vehicle-photos").upload(
+                original_filename,
                 file_content,
                 {"content-type": file.content_type}
             )
-            
-            # Get public URL
-            public_url = supabase.storage.from_("vehicle-photos").get_public_url(unique_filename)
+            original_url = supabase.storage.from_("vehicle-photos").get_public_url(original_filename)
             
             # Save to database
             db_photo = VehiclePhoto(
                 vehicle_id=uuid_obj,
-                photo_url=public_url,
+                photo_url=blurred_url,
+                original_photo_url=original_url,
                 is_primary=(i == 0)
             )
             db.add(db_photo)
-            uploaded_photos.append({"url": public_url, "is_primary": (i == 0)})
+            uploaded_photos.append({"url": blurred_url, "is_primary": (i == 0)})
             
         except Exception as e:
-            log_error(logger, e, {"vehicle_id": vehicle_id, "user_id": current_user_data["user_id"], "filename": file.filename}, "photo_upload_error")
+            log_error(logger, e, {"vehicle_id": vehicle_id, "user_id": current_user_data["user_id"], "file_name": file.filename}, "photo_upload_error")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to upload photo: {str(e)}"
             )
     
     db.commit()
+    logger.info(f"Uploaded {len(files)} photos for vehicle", extra={
+        "vehicle_id": vehicle_id,
+        "user_id": current_user_data["user_id"],
+        "photo_count": len(files)
+    })
     return {"message": f"Uploaded {len(files)} photos", "photos": uploaded_photos}
 
 @router.post("/{vehicle_id}/availability_slots")

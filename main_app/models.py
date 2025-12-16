@@ -44,7 +44,8 @@ class VehiclePhoto(Base):
     __tablename__ = "vehicle_photos"
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=text('gen_random_uuid()'), index=True)
     vehicle_id = Column(UUID(as_uuid=True), ForeignKey('vehicles.id', ondelete='CASCADE'), nullable=False, index=True)
-    photo_url = Column(Text, nullable=False)
+    photo_url = Column(Text, nullable=False)  # Blurred version (public)
+    original_photo_url = Column(Text, nullable=False)  # Original version (restricted)
     is_primary = Column(Boolean, server_default=text('false'))
     created_at = Column(DateTime(timezone=True), server_default=text('now()'))
     vehicle = relationship('VehicleModel', backref='photo_list')
