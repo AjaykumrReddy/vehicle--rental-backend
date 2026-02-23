@@ -9,6 +9,7 @@ class UserRegister(BaseModel):
     phone_number: str = Field(..., min_length=10, max_length=15)
     full_name: str = Field(..., min_length=2, max_length=100)
     email: Optional[str] = Field(None, pattern=r'^[\w\.-]+@[\w\.-]+\.\w+$')
+    user_type: str = Field("rider", pattern="^(rider|owner|both)$")
     
     @validator('phone_number')
     def validate_phone(cls, v):
@@ -38,6 +39,7 @@ class UserResponse(BaseModel):
     phone_number: str
     full_name: str
     email: Optional[str]
+    user_type: str
     is_verified: bool
     is_active: bool
     

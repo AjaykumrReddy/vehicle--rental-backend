@@ -13,6 +13,7 @@ class User(Base):
     phone_number = Column(Text, unique=True, index=True, nullable=False)
     email = Column(Text, unique=True, index=True, nullable=True)
     full_name = Column(Text, nullable=False)
+    user_type = Column(String(20), nullable=False, server_default=text("'rider'"))  # rider, owner, both
     otp_code = Column(Text, nullable=True)
     otp_expires_at = Column(DateTime(timezone=True), nullable=True)
     is_verified = Column(Boolean, server_default=text('false'))

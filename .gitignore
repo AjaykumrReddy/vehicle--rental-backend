@@ -20,6 +20,7 @@ wheels/
 .installed.cfg
 *.egg
 PYTHONPATH
+.expo/
 
 # Virtual environments
 venv/

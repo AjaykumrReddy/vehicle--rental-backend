@@ -10,10 +10,14 @@ from ..auth import generate_otp, is_otp_valid, create_access_token, OTP_EXPIRE_M
 from geoalchemy2.functions import ST_X, ST_Y
 from ..logging_config import get_logger, log_error
 from ..sms_service import sms_service
+from pydantic import BaseModel, Field
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+class UpdateUserType(BaseModel):
+    user_type: str = Field(..., pattern="^(rider|owner|both)$")
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register_user(user_data: UserRegister, db: Session = Depends(get_db)):
@@ -24,7 +28,8 @@ def register_user(user_data: UserRegister, db: Session = Depends(get_db)):
         db_user = User(
             phone_number=user_data.phone_number,
             full_name=user_data.full_name,
-            email=user_data.email
+            email=user_data.email,
+            user_type=user_data.user_type
         )
         db.add(db_user)
         db.commit()
@@ -152,6 +157,11 @@ def verify_otp(otp_data: VerifyOTP, db: Session = Depends(get_db)):
                 detail="Invalid OTP"
             )
         
+        # Mark user as verified on first successful OTP verification
+        if not user.is_verified:
+            user.is_verified = True
+            logger.info(f"User verified for first time", extra={"phone_number": otp_data.phone_number, "user_id": str(user.id)})
+        
         # Clear OTP after successful verification
         user.otp_code = None
         user.otp_expires_at = None
@@ -193,6 +203,32 @@ def get_current_user_from_db(current_user_data: dict = Depends(get_current_user)
 def get_profile(current_user: User = Depends(get_current_user_from_db)):
     """Get current user profile (protected endpoint)"""
     return current_user
+
+@router.patch("/profile/user-type")
+def update_user_type(
+    update_data: UpdateUserType,
+    current_user: User = Depends(get_current_user_from_db),
+    db: Session = Depends(get_db)
+):
+    """Update user type (rider/owner/both)"""
+    try:
+        current_user.user_type = update_data.user_type
+        db.commit()
+        
+        logger.info(f"User type updated", extra={
+            "user_id": str(current_user.id),
+            "new_user_type": update_data.user_type
+        })
+        
+        return {"message": "User type updated successfully", "user_type": update_data.user_type}
+    
+    except Exception as e:
+        db.rollback()
+        log_error(logger, e, {"user_id": str(current_user.id)}, "update_user_type_error")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update user type"
+        )
 
 @router.get("/vehicles", response_model=List[VehicleResponse])
 def get_user_vehicles(current_user: User = Depends(get_current_user_from_db), db: Session = Depends(get_db)):
